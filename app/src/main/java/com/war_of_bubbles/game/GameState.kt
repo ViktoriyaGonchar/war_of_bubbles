@@ -16,6 +16,7 @@ data class GameState(
     var selectedBall: Ball? = null,
     var selectedAction: Action? = null,
     var targetBall: Ball? = null,
+    var isBossSelected: Boolean = false,
     var isGameOver: Boolean = false,
     var isVictory: Boolean = false,
     var combatLog: MutableList<String> = mutableListOf(),
@@ -51,10 +52,14 @@ data class GameState(
         selectedBall = null
         selectedAction = null
         targetBall = null
+        isBossSelected = false
         isGameOver = false
         isVictory = false
         combatLog.clear()
         turnNumber = 1
+        
+        // Начальное сообщение
+        addLog("🎮 Битва началась! Выберите свой шарик для атаки!")
     }
 
     fun checkGameOver() {
@@ -106,6 +111,7 @@ data class GameState(
         selectedBall = null
         selectedAction = null
         targetBall = null
+        isBossSelected = false
         
         checkGameOver()
     }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,45 +27,83 @@ import com.war_of_bubbles.entities.BallType
 import com.war_of_bubbles.entities.Boss
 import com.war_of_bubbles.game.GameState.Action
 import com.war_of_bubbles.systems.CombatSystem
+import com.war_of_bubbles.audio.rememberSoundManager
+import com.war_of_bubbles.audio.SoundType
 import kotlinx.coroutines.delay
 
 /**
  * Главный игровой экран
  */
 @Composable
-fun GameScreen() {
-    val gameState = remember { GameState() }
+fun GameScreen(onSettingsClick: () -> Unit = {}) {
+    var gameState by remember { mutableStateOf(GameState()) }
     var canvasSize by remember { mutableStateOf(Size(0f, 0f)) }
     var isInitialized by remember { mutableStateOf(false) }
+    var animationTime by remember { mutableStateOf(0L) }
+    val soundManager = rememberSoundManager()
+    
+    // Анимация для пульсации босса и инициализация
+    LaunchedEffect(Unit) {
+        // Инициализируем с дефолтными размерами, если Canvas еще не готов
+        if (!isInitialized && canvasSize.width == 0f) {
+            gameState = gameState.copy().apply { reset(800f, 400f) }
+            isInitialized = true
+        }
+        
+        // Анимация для пульсации босса
+        while (true) {
+            animationTime = System.currentTimeMillis()
+            kotlinx.coroutines.delay(50)
+        }
+    }
 
     LaunchedEffect(canvasSize) {
-        if (canvasSize.width > 0f && canvasSize.height > 0f && !isInitialized) {
-            gameState.reset(canvasSize.width, canvasSize.height)
-            isInitialized = true
+        if (canvasSize.width > 0f && canvasSize.height > 0f) {
+            if (!isInitialized || gameState.playerBalls.isEmpty()) {
+                gameState = gameState.copy().apply { reset(canvasSize.width, canvasSize.height) }
+                isInitialized = true
+            }
         }
     }
     
     // Автоматическое выполнение хода врагов и босса
-    LaunchedEffect(gameState.currentTurn, gameState.isGameOver) {
+    LaunchedEffect(gameState.isGameOver) {
+        if (gameState.isGameOver) {
+            if (gameState.isVictory) {
+                soundManager.playVictorySound()
+            } else {
+                soundManager.playDefeatSound()
+            }
+            return@LaunchedEffect
+        }
+    }
+    
+    LaunchedEffect(gameState.currentTurn) {
         if (gameState.isGameOver) return@LaunchedEffect
         
         when (gameState.currentTurn) {
             GameState.Turn.ENEMY -> {
                 delay(500)
-                gameState.enemyBalls.filter { it.isAlive }.forEach { enemy ->
-                    AIController.executeEnemyTurn(enemy, gameState.playerBalls, gameState)
+                val currentState = gameState
+                currentState.enemyBalls.filter { it.isAlive }.forEach { enemy ->
+                    AIController.executeEnemyTurn(enemy, currentState.playerBalls, currentState)
                     delay(800)
                 }
                 delay(500)
-                gameState.nextTurn()
+                val newState = currentState.copy()
+                newState.nextTurn()
+                gameState = newState
             }
             GameState.Turn.BOSS -> {
                 delay(500)
-                if (gameState.boss.isAlive && gameState.enemyBalls.all { !it.isAlive }) {
-                    AIController.executeBossTurn(gameState.boss, gameState.playerBalls, gameState)
+                val currentState = gameState
+                if (currentState.boss.isAlive && currentState.enemyBalls.all { !it.isAlive }) {
+                    AIController.executeBossTurn(currentState.boss, currentState.playerBalls, currentState)
                 }
                 delay(800)
-                gameState.nextTurn()
+                val newState = currentState.copy()
+                newState.nextTurn()
+                gameState = newState
             }
             GameState.Turn.PLAYER -> {
                 // Ход игрока - ожидаем клика
@@ -90,11 +129,19 @@ fun GameScreen() {
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold
             )
-            Text(
-                text = "Ход: ${gameState.turnNumber}",
-                color = Color(0xFF888888),
-                fontSize = 14.sp
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Ход: ${gameState.turnNumber}",
+                    color = Color(0xFF888888),
+                    fontSize = 14.sp
+                )
+                IconButton(onClick = onSettingsClick) {
+                    Text("⚙️", fontSize = 20.sp)
+                }
+            }
         }
         
         Spacer(modifier = Modifier.height(8.dp))
@@ -134,23 +181,33 @@ fun GameScreen() {
             Box(modifier = Modifier.fillMaxSize()) {
                 GameCanvas(
                     gameState = gameState,
+                    animationTime = animationTime,
                     onCanvasSizeChange = { size ->
                         canvasSize = size
                     },
                     onBallClick = { ball ->
                         if (gameState.currentTurn == GameState.Turn.PLAYER && !gameState.isGameOver) {
-                            if (ball in gameState.playerBalls) {
-                                gameState.selectedBall = ball
-                                gameState.selectedAction = null
-                                gameState.targetBall = null
+                            if (ball in gameState.playerBalls && ball.isAlive) {
+                                soundManager.playSelectSound()
+                                gameState = gameState.copy(
+                                    selectedBall = ball,
+                                    selectedAction = null,
+                                    targetBall = null,
+                                    isBossSelected = false
+                                )
                             }
                         }
                     },
                     onEnemyClick = { enemy ->
                         if (gameState.currentTurn == GameState.Turn.PLAYER && 
                             gameState.selectedBall != null && 
-                            !gameState.isGameOver) {
-                            gameState.targetBall = enemy
+                            !gameState.isGameOver &&
+                            enemy.isAlive) {
+                            soundManager.playSelectSound()
+                            gameState = gameState.copy(
+                                targetBall = enemy,
+                                isBossSelected = false
+                            )
                         }
                     },
                     onBossClick = { boss ->
@@ -159,8 +216,11 @@ fun GameScreen() {
                             !gameState.isGameOver && 
                             gameState.enemyBalls.all { !it.isAlive } &&
                             gameState.boss.isAlive) {
-                            // Босс выбран как цель (для визуальной обратной связи)
-                            gameState.targetBall = null
+                            // Босс выбран как цель
+                            gameState = gameState.copy(
+                                targetBall = null,
+                                isBossSelected = true
+                            )
                         }
                     }
                 )
@@ -171,7 +231,7 @@ fun GameScreen() {
 
         // Панель действий
         if (gameState.selectedBall != null && gameState.currentTurn == GameState.Turn.PLAYER && !gameState.isGameOver) {
-            ActionPanel(gameState = gameState)
+            ActionPanel(gameState = gameState, soundManager = soundManager, onGameStateUpdate = { gameState = it })
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -226,12 +286,12 @@ fun GameScreen() {
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    Button(
-                        onClick = { 
-                            isInitialized = false
-                            gameState.reset(canvasSize.width, canvasSize.height)
-                            isInitialized = true
-                        },
+                        Button(
+                            onClick = { 
+                                isInitialized = false
+                                gameState = gameState.copy().apply { reset(canvasSize.width, canvasSize.height) }
+                                isInitialized = true
+                            },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.White,
                             contentColor = Color.Black
@@ -251,6 +311,7 @@ fun GameScreen() {
 @Composable
 fun GameCanvas(
     gameState: GameState,
+    animationTime: Long = System.currentTimeMillis(),
     onCanvasSizeChange: (Size) -> Unit,
     onBallClick: (Ball) -> Unit,
     onEnemyClick: (Ball) -> Unit,
@@ -314,31 +375,38 @@ fun GameCanvas(
         )
 
         // Отрисовка врагов
-        gameState.enemyBalls.forEach { enemy ->
-            drawBall(
-                ball = enemy,
-                isSelected = gameState.targetBall == enemy,
-                isEnemy = true
-            )
+        if (gameState.enemyBalls.isNotEmpty()) {
+            gameState.enemyBalls.forEach { enemy ->
+                if (enemy.position != Offset.Zero) {
+                    drawBall(
+                        ball = enemy,
+                        isSelected = gameState.targetBall == enemy,
+                        isEnemy = true
+                    )
+                }
+            }
         }
 
         // Отрисовка босса
-        if (gameState.boss.isAlive && gameState.enemyBalls.all { !it.isAlive }) {
+        if (gameState.boss.isAlive && gameState.boss.position != Offset.Zero && gameState.enemyBalls.all { !it.isAlive }) {
             drawBoss(
                 boss = gameState.boss,
-                isTarget = gameState.selectedBall != null && 
-                          gameState.currentTurn == GameState.Turn.PLAYER &&
-                          gameState.targetBall == null
+                isTarget = gameState.isBossSelected,
+                animationTime = animationTime
             )
         }
 
         // Отрисовка шариков игрока
-        gameState.playerBalls.forEach { ball ->
-            drawBall(
-                ball = ball,
-                isSelected = gameState.selectedBall == ball,
-                isEnemy = false
-            )
+        if (gameState.playerBalls.isNotEmpty()) {
+            gameState.playerBalls.forEach { ball ->
+                if (ball.position != Offset.Zero) {
+                    drawBall(
+                        ball = ball,
+                        isSelected = gameState.selectedBall == ball,
+                        isEnemy = false
+                    )
+                }
+            }
         }
     }
 }
@@ -463,7 +531,7 @@ fun DrawScope.drawBall(ball: Ball, isSelected: Boolean, isEnemy: Boolean) {
 /**
  * Отрисовка босса
  */
-fun DrawScope.drawBoss(boss: Boss, isTarget: Boolean = false) {
+fun DrawScope.drawBoss(boss: Boss, isTarget: Boolean = false, animationTime: Long = System.currentTimeMillis()) {
     if (!boss.isAlive) return
     
     val radius = 60f
@@ -479,7 +547,7 @@ fun DrawScope.drawBoss(boss: Boss, isTarget: Boolean = false) {
     }
     
     // Пульсация для босса
-    val pulseAlpha = 0.5f + 0.3f * kotlin.math.sin(System.currentTimeMillis() / 500.0).toFloat()
+    val pulseAlpha = 0.5f + 0.3f * kotlin.math.sin(animationTime / 500.0).toFloat()
     
     // Тень
     drawCircle(
@@ -580,7 +648,11 @@ fun DrawScope.drawBoss(boss: Boss, isTarget: Boolean = false) {
  * Панель действий
  */
 @Composable
-fun ActionPanel(gameState: GameState) {
+fun ActionPanel(
+    gameState: GameState,
+    soundManager: com.war_of_bubbles.audio.SoundManager,
+    onGameStateUpdate: (GameState) -> Unit
+) {
     val selectedBall = gameState.selectedBall ?: return
     
     Card(
@@ -591,7 +663,7 @@ fun ActionPanel(gameState: GameState) {
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
-                text = "Выбрано: ${selectedBall.type.emoji} ${selectedBall.type.name}",
+                text = "Выбрано: ${selectedBall.type.emoji} ${selectedBall.type.typeName}",
                 color = Color.White,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
@@ -611,15 +683,18 @@ fun ActionPanel(gameState: GameState) {
                 // Кнопка атаки
                 Button(
                     onClick = {
-                        gameState.selectedAction = Action.ATTACK
-                        if (gameState.targetBall != null) {
-                            executeAttack(gameState)
-                        } else if (gameState.enemyBalls.all { !it.isAlive } && gameState.boss.isAlive) {
-                            executeBossAttack(gameState)
+                        val newState = gameState.copy()
+                        newState.selectedAction = Action.ATTACK
+                        if (gameState.targetBall != null && gameState.targetBall!!.isAlive) {
+                            executeAttack(newState, onGameStateUpdate, soundManager)
+                        } else if (gameState.isBossSelected || (gameState.enemyBalls.all { !it.isAlive } && gameState.boss.isAlive)) {
+                            executeBossAttack(newState, onGameStateUpdate, soundManager)
+                        } else {
+                            onGameStateUpdate(newState)
                         }
                     },
                     enabled = (gameState.targetBall != null && gameState.targetBall!!.isAlive) || 
-                             (gameState.enemyBalls.all { !it.isAlive } && gameState.boss.isAlive),
+                             (gameState.isBossSelected || (gameState.enemyBalls.all { !it.isAlive } && gameState.boss.isAlive)),
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("⚔️ Атака")
@@ -628,8 +703,9 @@ fun ActionPanel(gameState: GameState) {
                 // Кнопка специальной способности
                 Button(
                     onClick = {
-                        gameState.selectedAction = Action.SPECIAL
-                        executeSpecial(gameState)
+                        val newState = gameState.copy()
+                        newState.selectedAction = Action.SPECIAL
+                        executeSpecial(newState, onGameStateUpdate, soundManager)
                     },
                     enabled = selectedBall.specialCooldown == 0 && selectedBall.isAlive,
                     modifier = Modifier.weight(1f),
@@ -655,8 +731,16 @@ fun ActionPanel(gameState: GameState) {
             } else if (gameState.boss.isAlive) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "💡 Атакуйте босса!",
-                    color = Color(0xFFFF4444),
+                    text = if (gameState.isBossSelected) "💡 Босс выбран! Нажмите атаку!" else "💡 Кликните на босса для выбора цели!",
+                    color = if (gameState.isBossSelected) Color(0xFF00FF00) else Color(0xFFFF4444),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            } else if (gameState.enemyBalls.all { !it.isAlive } && !gameState.boss.isAlive) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "🎉 Все враги побеждены!",
+                    color = Color(0xFF00FF00),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -668,92 +752,131 @@ fun ActionPanel(gameState: GameState) {
 /**
  * Выполнение атаки
  */
-fun executeAttack(gameState: GameState) {
+@Composable
+fun rememberGameState(): MutableState<GameState> {
+    return remember { mutableStateOf(GameState()) }
+}
+
+fun executeAttack(
+    gameState: GameState, 
+    updateGameState: (GameState) -> Unit,
+    soundManager: com.war_of_bubbles.audio.SoundManager
+) {
     val attacker = gameState.selectedBall ?: return
-    val target = gameState.targetBall
+    val target = gameState.targetBall ?: return
     
-    if (target != null && attacker.isAlive && target.isAlive) {
+    if (attacker.isAlive && target.isAlive) {
+        soundManager.playAttackSound()
         val damage = CombatSystem.attack(attacker, target)
-        gameState.addLog("${attacker.type.emoji} ${attacker.type.name} атакует ${target.type.emoji} ${target.type.name} на $damage урона!")
+        val newState = gameState.copy()
+        newState.addLog("${attacker.type.emoji} ${attacker.type.typeName} атакует ${target.type.emoji} ${target.type.typeName} на $damage урона!")
         
         if (!target.isAlive) {
-            gameState.addLog("  💀 ${target.type.emoji} ${target.type.name} повержен!")
+            soundManager.playDamageSound()
+            newState.addLog("  💀 ${target.type.emoji} ${target.type.typeName} повержен!")
+        } else {
+            soundManager.playDamageSound()
         }
         
-        gameState.nextTurn()
+        newState.nextTurn()
+        updateGameState(newState)
     }
 }
 
 /**
  * Выполнение атаки по боссу
  */
-fun executeBossAttack(gameState: GameState) {
+fun executeBossAttack(
+    gameState: GameState, 
+    updateGameState: (GameState) -> Unit,
+    soundManager: com.war_of_bubbles.audio.SoundManager
+) {
     val attacker = gameState.selectedBall ?: return
     
     if (attacker.isAlive && gameState.boss.isAlive) {
+        soundManager.playAttackSound()
         val damage = CombatSystem.attackBoss(attacker, gameState.boss)
-        gameState.addLog("${attacker.type.emoji} ${attacker.type.name} атакует ${gameState.boss.emoji} ${gameState.boss.name} на $damage урона!")
+        val newState = gameState.copy()
+        newState.addLog("${attacker.type.emoji} ${attacker.type.typeName} атакует ${newState.boss.emoji} ${newState.boss.name} на $damage урона!")
         
-        if (!gameState.boss.isAlive) {
-            gameState.addLog("  💀 ${gameState.boss.name} повержен!")
+        if (!newState.boss.isAlive) {
+            soundManager.playVictorySound()
+            newState.addLog("  💀 ${newState.boss.name} повержен!")
+        } else {
+            soundManager.playDamageSound()
         }
         
-        gameState.nextTurn()
+        newState.nextTurn()
+        updateGameState(newState)
     }
 }
 
 /**
  * Выполнение специальной способности
  */
-fun executeSpecial(gameState: GameState) {
+fun executeSpecial(
+    gameState: GameState, 
+    updateGameState: (GameState) -> Unit,
+    soundManager: com.war_of_bubbles.audio.SoundManager
+) {
     val attacker = gameState.selectedBall ?: return
     
     if (!attacker.isAlive) return
     
+    val newState = gameState.copy()
+    
+    soundManager.playSpecialSound()
+    
     when (attacker.type) {
         BallType.RED -> {
-            val aliveEnemies = gameState.enemyBalls.filter { it.isAlive }
+            val aliveEnemies = newState.enemyBalls.filter { it.isAlive }
             if (aliveEnemies.isNotEmpty()) {
                 val results = CombatSystem.redSpecial(attacker, aliveEnemies)
-                gameState.addLog("${attacker.type.emoji} ${attacker.type.name} использует ${attacker.type.getSpecialAbilityName()}!")
+                newState.addLog("${attacker.type.emoji} ${attacker.type.typeName} использует ${attacker.type.getSpecialAbilityName()}!")
                 results.forEach { (ball, damage) ->
-                    gameState.addLog("  → ${ball.type.emoji} получает $damage урона")
+                    soundManager.playDamageSound()
+                    newState.addLog("  → ${ball.type.emoji} получает $damage урона")
                     if (!ball.isAlive) {
-                        gameState.addLog("    💀 ${ball.type.emoji} повержен!")
+                        newState.addLog("    💀 ${ball.type.emoji} повержен!")
                     }
                 }
-            } else if (gameState.boss.isAlive) {
-                val damage = CombatSystem.redSpecialBoss(attacker, gameState.boss)
-                gameState.addLog("${attacker.type.emoji} ${attacker.type.name} использует ${attacker.type.getSpecialAbilityName()} по боссу!")
-                gameState.addLog("  → ${gameState.boss.emoji} получает $damage урона!")
+            } else if (newState.boss.isAlive) {
+                val damage = CombatSystem.redSpecialBoss(attacker, newState.boss)
+                soundManager.playDamageSound()
+                newState.addLog("${attacker.type.emoji} ${attacker.type.typeName} использует ${attacker.type.getSpecialAbilityName()} по боссу!")
+                newState.addLog("  → ${newState.boss.emoji} получает $damage урона!")
             }
         }
         BallType.BLUE -> {
-            val shielded = CombatSystem.blueSpecial(attacker, gameState.playerBalls)
-            gameState.addLog("${attacker.type.emoji} ${attacker.type.name} использует ${attacker.type.getSpecialAbilityName()}!")
-            gameState.addLog("  → Защита активирована для ${shielded.size} союзников!")
+            val shielded = CombatSystem.blueSpecial(attacker, newState.playerBalls)
+            newState.addLog("${attacker.type.emoji} ${attacker.type.typeName} использует ${attacker.type.getSpecialAbilityName()}!")
+            newState.addLog("  → Защита активирована для ${shielded.size} союзников!")
         }
         BallType.YELLOW -> {
-            val target = gameState.targetBall
+            val target = newState.targetBall
             if (target != null && target.isAlive) {
                 val damage = CombatSystem.yellowSpecial(attacker, target)
-                gameState.addLog("${attacker.type.emoji} ${attacker.type.name} использует ${attacker.type.getSpecialAbilityName()}!")
-                gameState.addLog("  → ${target.type.emoji} получает $damage урона!")
+                soundManager.playDamageSound()
+                newState.addLog("${attacker.type.emoji} ${attacker.type.typeName} использует ${attacker.type.getSpecialAbilityName()}!")
+                newState.addLog("  → ${target.type.emoji} получает $damage урона!")
                 if (!target.isAlive) {
-                    gameState.addLog("    💀 ${target.type.emoji} повержен!")
+                    newState.addLog("    💀 ${target.type.emoji} повержен!")
                 }
-            } else if (gameState.boss.isAlive && gameState.enemyBalls.all { !it.isAlive }) {
-                val damage = CombatSystem.yellowSpecialBoss(attacker, gameState.boss)
-                gameState.addLog("${attacker.type.emoji} ${attacker.type.name} использует ${attacker.type.getSpecialAbilityName()} по боссу!")
-                gameState.addLog("  → ${gameState.boss.emoji} получает $damage урона!")
+            } else if (newState.boss.isAlive && newState.enemyBalls.all { !it.isAlive }) {
+                val damage = CombatSystem.yellowSpecialBoss(attacker, newState.boss)
+                soundManager.playDamageSound()
+                newState.addLog("${attacker.type.emoji} ${attacker.type.typeName} использует ${attacker.type.getSpecialAbilityName()} по боссу!")
+                newState.addLog("  → ${newState.boss.emoji} получает $damage урона!")
             } else {
-                gameState.addLog("⚠️ Нужна цель для атаки!")
+                newState.addLog("⚠️ Нужна цель для атаки!")
+                updateGameState(newState)
                 return
             }
         }
     }
     
-    gameState.nextTurn()
+    newState.nextTurn()
+    updateGameState(newState)
 }
 
 // Расширение для возведения в степень

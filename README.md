@@ -79,7 +79,7 @@ app/src/main/java/com/war_of_bubbles/
 ## 📱 Требования
 
 - **minSdk**: 29 (Android 10)
-- **targetSdk**: 36 (Android 15)
+- **targetSdk**: 34 (Android 14)
 - **compileSdk**: 36
 
 ## 🎨 Визуальный стиль

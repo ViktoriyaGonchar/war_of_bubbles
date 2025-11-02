@@ -11,7 +11,7 @@ android {
     defaultConfig {
         applicationId = "com.war_of_bubbles"
         minSdk = 29
-        targetSdk = 36
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
 

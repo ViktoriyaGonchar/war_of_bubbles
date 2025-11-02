@@ -27,7 +27,7 @@ object AIController {
                 if (useSpecial) {
                     val results = CombatSystem.redSpecial(enemy, aliveTargets)
                     if (results.isNotEmpty()) {
-                        gameState.addLog("${enemy.type.emoji} ${enemy.type.name} использует ${enemy.type.getSpecialAbilityName()}!")
+                        gameState.addLog("${enemy.type.emoji} ${enemy.type.typeName} использует ${enemy.type.getSpecialAbilityName()}!")
                         results.forEach { (ball, damage) ->
                             gameState.addLog("  → ${ball.type.emoji} получает $damage урона")
                         }
@@ -35,29 +35,29 @@ object AIController {
                     }
                 }
                 val damage = CombatSystem.attack(enemy, target)
-                gameState.addLog("${enemy.type.emoji} ${enemy.type.name} атакует ${target.type.emoji} на $damage урона!")
+                gameState.addLog("${enemy.type.emoji} ${enemy.type.typeName} атакует ${target.type.emoji} на $damage урона!")
             }
             BallType.BLUE -> {
                 if (useSpecial) {
                     val shielded = CombatSystem.blueSpecial(enemy, gameState.enemyBalls)
                     if (shielded.isNotEmpty()) {
-                        gameState.addLog("${enemy.type.emoji} ${enemy.type.name} использует ${enemy.type.getSpecialAbilityName()}!")
+                        gameState.addLog("${enemy.type.emoji} ${enemy.type.typeName} использует ${enemy.type.getSpecialAbilityName()}!")
                         gameState.addLog("  → Защита активирована!")
                         return
                     }
                 }
                 val damage = CombatSystem.attack(enemy, target)
-                gameState.addLog("${enemy.type.emoji} ${enemy.type.name} атакует ${target.type.emoji} на $damage урона!")
+                gameState.addLog("${enemy.type.emoji} ${enemy.type.typeName} атакует ${target.type.emoji} на $damage урона!")
             }
             BallType.YELLOW -> {
                 if (useSpecial) {
                     val damage = CombatSystem.yellowSpecial(enemy, target)
-                    gameState.addLog("${enemy.type.emoji} ${enemy.type.name} использует ${enemy.type.getSpecialAbilityName()}!")
+                    gameState.addLog("${enemy.type.emoji} ${enemy.type.typeName} использует ${enemy.type.getSpecialAbilityName()}!")
                     gameState.addLog("  → ${target.type.emoji} получает $damage урона!")
                     return
                 }
                 val damage = CombatSystem.attack(enemy, target)
-                gameState.addLog("${enemy.type.emoji} ${enemy.type.name} атакует ${target.type.emoji} на $damage урона!")
+                gameState.addLog("${enemy.type.emoji} ${enemy.type.typeName} атакует ${target.type.emoji} на $damage урона!")
             }
         }
     }

@@ -8,7 +8,7 @@ import androidx.compose.ui.graphics.Color
 enum class BallType(
     val emoji: String,
     val color: Color,
-    val name: String,
+    val typeName: String,
     val baseHP: Int,
     val baseATK: Int,
     val baseDEF: Int
@@ -16,7 +16,7 @@ enum class BallType(
     RED(
         emoji = "🔴",
         color = Color(0xFFFF4444),
-        name = "Красный",
+        typeName = "Красный",
         baseHP = 100,
         baseATK = 30,
         baseDEF = 10
@@ -24,7 +24,7 @@ enum class BallType(
     BLUE(
         emoji = "🔵",
         color = Color(0xFF4444FF),
-        name = "Синий",
+        typeName = "Синий",
         baseHP = 120,
         baseATK = 20,
         baseDEF = 25
@@ -32,7 +32,7 @@ enum class BallType(
     YELLOW(
         emoji = "🟡",
         color = Color(0xFFFFDD44),
-        name = "Жёлтый",
+        typeName = "Жёлтый",
         baseHP = 80,
         baseATK = 25,
         baseDEF = 15
